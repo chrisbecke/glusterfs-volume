@@ -31,3 +31,6 @@ glusterfs: plugin docker
 		sudo docker plugin create docker-volume-glusterfs ./plugin/
 
 all: glusterfs
+
+clean:
+	docker-compose down -v
