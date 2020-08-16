@@ -1,0 +1,17 @@
+variables:
+  HTTPS_PROXY: "http://10.1.254.254:9090"
+  NO_PROXY: "localhost,.mgsops.net"
+
+build plugin:
+  image: docker
+  tags:
+    - docker.sock
+  script:
+    - docker build --build-arg HTTPS_PROXY="$HTTPS_PROXY" --build-arg NO_PROXY="$NO_PROXY" -t $CI_REGISTRY_IMAGE:rootfs .
+    - export id=$(docker create $CI_REGISTRY_IMAGE:rootfs)
+    - mkdir -p ./plugin/rootfs
+    - docker export $id | tar -x -C ./plugin/rootfs
+    - cp config.json ./plugin/
+    - docker rm -vf $id
+    - docker plugin create registry.unreal.mgsops.net/docker-volume-glusterfs ./plugin/
+    - docker plugin push registry.unreal.mgsops.net/docker-volume-glusterfs

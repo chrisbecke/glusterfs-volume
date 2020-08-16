@@ -1,0 +1,60 @@
+version: "3.7"
+
+services:
+
+  server1:
+    image: gluster/gluster-centos
+    hostname: server1
+    privileged: true
+    environment:
+      CGROUP_PIDS_MAX: 0
+    volumes:
+      - lvm1:/run/lvm
+#      - config1:/etc/glusterfs
+#      - cgroup1:/sys/fs/cgroup
+      - save1:/var/lib/glusterd
+      - data1:/data
+    depends_on:
+      - server2
+
+  server2:
+    image: gluster/gluster-centos
+    hostname: server2
+    privileged: true
+    environment:
+      CGROUP_PIDS_MAX: 0
+    volumes:
+      - lvm2:/run/lvm
+#      - config2:/etc/glusterfs
+#      - cgroup2:/sys/fs/cgroup
+      - save2:/var/lib/glusterd
+      - data2:/data
+
+  glusterfs:
+    image: gluster/glusterfs-client
+    privileged: true # fuse
+    depends_on:
+      - server1
+  
+  builder:
+    image: glusterbuild
+    build:
+      context: builder
+    volumes:
+      - ./:/app
+      - ./test:/usr/local/go/src/test
+
+volumes:
+  config1:
+  config2:
+  save1:
+  save2:  
+  data1:
+  data2:
+  lvm1:
+  lvm2:
+  cgroup1:
+  cgroup2:
+
+#  test-volume:
+#    driver: docker-volume-glusterfs:latest

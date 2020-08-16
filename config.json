@@ -1,0 +1,46 @@
+{
+  "description": "GlusterFS plugin for Docker",
+  "documentation": "https://docs.docker.com/engine/extend/plugins/",
+  "entrypoint": [
+    "/docker-volume-glusterfs"
+  ],
+  "network": {
+    "type": "host"
+  },
+  "interface": {
+    "socket": "glusterfs.sock",
+    "types": [
+      "docker.volumedriver/1.0"
+    ]
+  },
+  "linux": {
+    "capabilities": [
+      "CAP_SYS_ADMIN"
+    ],
+    "devices": [
+			{
+				"name":"fuse",
+				"path":"/dev/fuse"
+			}
+		]
+  },
+  "propagatedMount": "/mnt/volumes",
+  "env": [
+    {
+      "name": "GFS_VOLUME",
+      "description": "volfile-id",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "GFS_SERVERS",
+      "description": "comma seperated list of volfile-server",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    }
+  ]
+}
