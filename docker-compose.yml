@@ -40,8 +40,9 @@ services:
     image: glusterbuild
     build:
       context: builder
+    working_dir: /src
     volumes:
-      - ./:/app
+      - ./:/src
       - ./test:/usr/local/go/src/test
 
 volumes:

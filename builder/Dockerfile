@@ -9,6 +9,5 @@ RUN curl -k https://dl.google.com/go/go1.14.1.linux-amd64.tar.gz | tar xz -C /us
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENV PATH=/usr/local/go/bin:$PATH
-WORKDIR /app
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
