@@ -59,6 +59,21 @@ VOLUME /sys/fs/cgroup
 * [go-plugin-helper src](https://github.com/docker/go-plugins-helpers)
 * [config.json reference](https://docs.docker.com/engine/extend/config/)
 
+## Debugging
+
+### Plugin Logs
+
+Macos: ~/Library/Containers/com.docker.docker/Data/log/vm/dockerd.log
+RHEL: journalctl -xfu docker.service
+
+### Attach to plugins
+
+```bash
+runc --root /var/run/docker/plugins/runtime-root/plugins.moby/ list
+runc --root /var/run/docker/plugins/runtime-root/plugins.moby/ exec -t 5693b036ce049834b29fa7f00547dc6f89e626c5814987cb805f905dba5d5358 /bin/sh
+```
+
+
 ## Logs
 
 `docker plugin enable docker-volume-glusterfs`
