@@ -432,7 +432,7 @@ func (d *glusterfsDriver) ensureMount(mount *activeMount, mountpoint string, nam
 			return err
 		}
 	} else if err != nil {
-		log.Printf("ensureMount is unmounting dodgey fuse mount. os.Lstat %s, err: %v", mountpoint, err)
+		log.Printf("ensureMount is unmounting dodgey fuse mount: %v", err)
 		d.config.unmount(mountpoint)
 	}
 
