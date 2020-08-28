@@ -17,10 +17,9 @@ const propagatedMount = "/mnt/volumes"
 // -------------
 // main
 
-func main() {
-
-	gfsvol := os.Getenv("GFS_VOLUME")
-	gfsservers := strings.Split(os.Getenv("GFS_SERVERS"), ",")
+func init() {
+	// squash timestamps in logging as this logging stream is always encapsulated in a larger one, with timestamps.
+	log.SetFlags(0)
 	logfile := os.Getenv("LOGFILE")
 
 	if logfile != "" {
@@ -31,6 +30,12 @@ func main() {
 		defer f.Close()
 		log.SetOutput(f)
 	}
+}
+
+func main() {
+
+	gfsvol := os.Getenv("GFS_VOLUME")
+	gfsservers := strings.Split(os.Getenv("GFS_SERVERS"), ",")
 
 	d := &glusterfsDriver{
 		mounts: map[string]*activeMount{},

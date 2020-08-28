@@ -41,6 +41,14 @@
         "value"
       ],
       "value": ""
+    },
+    {
+      "name": "LOGFILE",
+      "description": "optional location of logfile",
+      "settable": [
+        "value"
+      ],
+      "value": ""
     }
   ]
 }
