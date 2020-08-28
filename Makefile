@@ -1,17 +1,22 @@
-plugin = "gluster-volume"
-go_source = main.go driver.go
+PLUGIN ?= gluster-volume
+CONTEXT ?= default
+
+context := $(CONTEXT)
+plugin := $(PLUGIN)
+go_source := main.go driver.go
+volume := test
+servers := lab717.mgsops.net
 
 .PHONY: build clean image test go
-
-# id := $(shell docker create $(plugin))
-# id = $(shell cat gluster_id.txt)
 
 all: build
 
 bin/linux/docker-volume-glusterfs: $(go_source)
 	@echo "[MAKE] Compiling glusterfs binary..."
 #	GOOS=linux GOARCH=arm go build -o ./bin/linux/docker-volume-glusterfs
-	docker-compose run builder go build -o ./bin/linux/docker-volume-glusterfs
+	docker context use default
+	docker-compose --context default run builder go build -o ./bin/linux/docker-volume-glusterfs
+	docker context use $(context)
 
 image: bin/linux/docker-volume-glusterfs
 	@echo "[MAKE] Building docker image for plugin..."
@@ -37,6 +42,7 @@ build: plugin plugin/config.json plugin/rootfs/docker-volume-glusterfs
 	@echo "[MAKE] Creating docker volume plugin..."
 	docker plugin disable --force $(plugin) ; true
 	docker plugin rm --force $(plugin) ; true
+
 	sudo docker plugin create $(plugin) ./plugin/
 
 clean:
@@ -46,13 +52,16 @@ clean:
 	@echo "[CLEAN] Disabling Plugin $(plugin)"
 	docker plugin disable -f $(plugin) | true
 	@echo "[CLEAN] Stopping builder"
-	docker-compose down -v
+	docker-compose --context default down -v
 	@echo "[CLEAN] Removing Plugin files"
 	sudo rm -rf ./plugin
 
 go: bin/linux/docker-volume-glusterfs
 
+push: build
+	docker plugin push $(plugin)
 
 test:
-	docker plugin set gluster-volume GFS_VOLUME=gv0 GFS_SERVERS=lab717.mgsops.net LOGFILE=/var/log/gvlogs
-	docker plugin enable gluster-volume
+	docker plugin disable $(plugin) --force | true
+	docker plugin set $(plugin) GFS_VOLUME=$(volume) GFS_SERVERS=$(servers)
+	docker plugin enable $(plugin)

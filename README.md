@@ -23,10 +23,19 @@ docker plugin install --alias cloud1 gluster-volume GFS_VOLUME=cloud1 GFS_SERVER
 
 This plugin expects the root gluster volume to be pre-created.
 
+## Publish to a remote repository
+
+docker-compose builder operations are passed an explicit --context default flag so that, if you wish, you can set a remote
+docker agent as the build target to deploy directly to a swarm server (as an example)
+
+```bash
+make build plugin=registry.unreal.mgsops.net/gluster-volume
+```
 
 ## GlusterFS test cluster
 
-the root docker-compose yml includes a basic 2 server glusterfs cluster that can be interacted with. It can't do much useful as outside of docker only a single node can be interacted with.
+the root docker-compose yml includes a basic 2 server glusterfs cluster that can be interacted with. It can't do much useful as outside of docker only a single node can be interacted with. Unfortunately it doesnt help to provide storage
+for the plugin right now.
 
 Start Gluster
 
@@ -73,78 +82,43 @@ runc --root /var/run/docker/plugins/runtime-root/plugins.moby/ list
 runc --root /var/run/docker/plugins/runtime-root/plugins.moby/ exec -t 5693b036ce049834b29fa7f00547dc6f89e626c5814987cb805f905dba5d5358 /bin/sh
 ```
 
+## Implementation Notes
 
-## Logs
+### docker plugin enable
 
-`docker plugin enable docker-volume-glusterfs`
-```bash
-2020/04/09 14:35:03 GlusterFS Volume Plugin listening on /run/docker/plugins/glusterfs.sock
-2020/04/09 14:35:03 Using GlusterFS volume gv0 hosted on servers [lab717.mgsops.net lab718.mgsops.net lab719.mgsops.net]
-```
+Activates the plugin
 
-`docker volume ls`
-```bash
-2020/04/09 14:35:15 Entering go-plugins-helpers listPath
-2020/04/09 14:35:17 Entering go-plugins-helpers capabilitiesPath
-```
+### docker volume ls
 
-`docker run --rm -it -v myvol:/data alpine /bin/sh`
-```bash
-2020/04/09 14:42:20 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:42:20 Entering go-plugins-helpers getPath
-...
-2020/04/09 14:42:21 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:42:21 Entering go-plugins-helpers getPath
-2020/04/09 14:42:22 Entering go-plugins-helpers capabilitiesPath
-...
-2020/04/09 14:42:22 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:42:22 Entering go-plugins-helpers getPath
-2020/04/09 14:42:23 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:42:23 Entering go-plugins-helpers mountPath
-2020/04/09 14:42:23 Entered Mount &{Name:myvol ID:7c5e8ec3cc60c1526cb55d8857f8a29d38d070036ad99a9bd38e393f7ae24fdb}
-2020/04/09 14:42:23 Executing &exec.Cmd{Path:\"/usr/sbin/glusterfs\", Args:[]string{\"glusterfs\", \"--volfile-server\", \"lab717.mgsops.net\", \"--volfile-server\", \"lab718.mgsops.net\", \"--volfile-server\", \"lab719.mgsops.net\", \"--volfile-id\", \"gv0\", \"--subdir-mount\", \"/myvol\", \"/mnt/volumes/myvol\"}, Env:[]string(nil), Dir:\"\", Stdin:io.Reader(nil), Stdout:io.Writer(nil), Stderr:io.Writer(nil), ExtraFiles:[]*os.File(nil), SysProcAttr:(*syscall.SysProcAttr)(nil), Process:(*os.Process)(nil), ProcessState:(*os.ProcessState)(nil), ctx:context.Context(nil), lookPathErr:error(nil), finished:false, childFiles:[]*os.File(nil), closeAfterStart:[]io.Closer(nil), closeAfterWait:[]io.Closer(nil), goroutine:[]func() error(nil), errch:(chan error)(nil), waitDone:(chan struct {})(nil)}
-2020/04/09 14:42:23 Mounted registration: &{connections:1 mountpoint:/mnt/volumes/myvol ids:map[7c5e8ec3cc60c1526cb55d8857f8a29d38d070036ad99a9bd38e393f7ae24fdb:1]}
-...
-2020/04/09 14:42:24 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:42:24 Entering go-plugins-helpers getPath
-```
+* listPath
+* capabilities Path
 
-`exit`
-```bash
-2020/04/09 14:50:32 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:50:32 Entering go-plugins-helpers getPath
-2020/04/09 14:50:34 Entering go-plugins-helpers capabilitiesPath
-2020/04/09 14:50:34 Entering go-plugins-helpers unmountPath
-2020/04/09 14:50:34 Entered Unmount &{myvol 95d7db083ae397c15ae958bb2c35137b8ad0cd9738d3146bd85534f93e496f74}2020/04/09 14:50:34 Unmounting volume myvol with 0 clients
-```
+### docker run -v ...
 
-## Old Dockerfile 
+* capabilitiesPath
+* getPath
+* mountPath
 
-Why?
-```yaml
-FROM golang:1.13 as builder
- WORKDIR /go/src/github.com/acme/docker-volume-glusterfs
-#WORKDIR /app
-COPY . .
-#ARG GO111MODULE=on
-#RUN set -ex \
-#    && apk add --no-cache --virtual .build-deps \
-#    gcc libc-dev \
- #   && go get github.com/docker/go-plugins-helpers/volume \
-#    && go build ./... \
-#    &&
-#RUN     go install --ldflags '-extldflags "-static"'dock
-RUN go build -ldflags '-extldflags -static' -o docker-volume-glusterfs
- #   && apk del .build-deps
+On Container Exit:
 
-FROM oraclelinux:7-slim as final
-#FROM gluster/glusterfs-client
-RUN yum install -q -y oracle-gluster-release-el7
-RUN yum install -y glusterfs
-RUN yum install -y glusterfs-fuse
-RUN yum install -y attr
+* capabilitesPath
+* getPath
+* unmountPath
 
-RUN mkdir -p /run/docker/plugins /mnt/state /mnt/volumes
-COPY --from=builder /app/docker-volume-glusterfs .
-CMD ["docker-volume-glusterfs"]
-```
+### docker volume create -d 
+
+* capabilitiesPath
+* getPath
+if getPath fails
+* createPath
+
+### docker volume rm
+
+If containers are using the volume
+* capabilitiesPath
+* getPath
+
+If containers are not using the volume
+* capabilitiesPath
+* getPath
+* removePath
