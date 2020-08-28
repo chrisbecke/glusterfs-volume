@@ -19,6 +19,54 @@ import (
 // default file mode to create new volume directories in gluster
 const defaultMode = 0755
 const mountMode = 0555
+const showHidden = false
+
+//////////////////////////////////////////////////////////////////////////////////
+//
+
+func RemoveContent(d *gfapi.Volume, path string) error {
+
+	dir, err := d.Open(path)
+	if err != nil {
+		log.Printf("RemoveAll error. gogfapu.Open(%s), err: %v", path, err)
+		return err
+	}
+	defer dir.Close()
+
+	files, err := dir.Readdir(0)
+	if err != nil {
+		log.Printf("RemoveAll error. gogfapi.Readdir(0) path: '%s', err: %v", path, err)
+		return err
+	}
+
+	for _, file := range files {
+		name := file.Name()
+		subdir := filepath.Join(path, name)
+		if name == "." || name == ".." {
+			// do nothing
+		} else if file.IsDir() {
+			if err := RemoveAll(d, subdir); err != nil {
+				return err
+			}
+		} else {
+			if err := d.Unlink(subdir); err != nil {
+				log.Printf("RemoveAll error. gogfapi.Unlink('%s'), err: %v", subdir, err)
+			}
+		}
+	}
+	return nil
+}
+
+func RemoveAll(d *gfapi.Volume, path string) error {
+	if err := RemoveContent(d, path); err != nil {
+		return err
+	}
+	if err := d.Rmdir(path); err != nil {
+		log.Printf("RemoveAll error. gogfapi.Rmdir(%s), err: %v", path, err)
+		return err
+	}
+	return nil
+}
 
 // -------------------------------------------
 // glusterFSDriver implementation
@@ -28,6 +76,150 @@ type glfsParams struct {
 	volume string
 	hosts  []string
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// -------------
+// Utility functions
+
+// connect to a mount. remember to defer vol.Unmount()
+func (d *glfsParams) connect() (*gfapi.Volume, error) {
+
+	vol := &gfapi.Volume{}
+	if err := vol.Init(d.volume, d.hosts...); err != nil {
+		log.Printf("gogfapi Error. Init volume: '%s', servers: %v. err: %v", d.volume, d.hosts, err)
+		return vol, err
+	}
+
+	if err := vol.Mount(); err != nil {
+		log.Printf("gogfapi Error. Mount volume: '%s', servers: %v. err: %v", d.volume, d.hosts, err)
+		return vol, err
+	}
+
+	return vol, nil
+}
+
+func (d *glfsParams) create(name string) error {
+
+	vol, err := d.connect()
+	if err != nil {
+		return err
+	}
+	defer vol.Unmount()
+
+	subdir := filepath.Join("/", name)
+
+	err = vol.Mkdir(subdir, defaultMode)
+
+	if err != nil {
+		log.Printf("gogfapi error. Mkdir dir: '%s'. err: %v", subdir, err)
+	}
+
+	return err
+}
+
+func (d *glfsParams) list() ([]os.FileInfo, error) {
+
+	vol, err := d.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer vol.Unmount()
+
+	dir, err := vol.Open(".")
+	if err != nil {
+		log.Printf("gogfapi error. Open dir: '.'. err: %v", err)
+		return nil, err
+	}
+	defer dir.Close()
+
+	dirs, err := dir.Readdir(0)
+	if err != nil {
+		log.Printf("gogfapi error. Readdir(0) dir: '.'. err: %v", err)
+		return nil, err
+	}
+
+	return dirs, nil
+}
+
+func (d *glfsParams) get(name string) (os.FileInfo, error) {
+	//	If its not found locally, look on the remote gluster volume
+	vol, err := d.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer vol.Unmount()
+
+	subdir := filepath.Join("/", name)
+
+	stat, err := vol.Stat(subdir)
+	if err != nil {
+		// This is an expected error, as docker calls getPath optimistically when creating
+		// volumes to test if they exist
+		//		log.Printf("gogfapi error. Stat('%s'). err: %v", subdir, err)
+		return nil, err
+	}
+
+	if !stat.IsDir() {
+		err = fmt.Errorf("Should be a directory: %s", name)
+		log.Printf("glusterfs config error. Expected a directory: %s, got: %v", name, stat)
+		return nil, err
+	}
+
+	return stat, nil
+}
+
+func (d *glfsParams) remove(name string) error {
+	vol, err := d.connect()
+	if err != nil {
+		return err
+	}
+	defer vol.Unmount()
+
+	subdir := filepath.Join("/", name)
+
+	err = RemoveAll(vol, subdir)
+
+	return err
+}
+
+// subdir in the gluster volume for the docker volume
+//func (d *glfsParams) subdir(Name string) string {
+//	return filepath.Join("/", Name)
+//}
+
+// ensureMount
+func (d *glfsParams) mount(mountpoint string, name string) error {
+
+	subdir := filepath.Join("/", name)
+
+	cmd := exec.Command("glusterfs")
+
+	for _, server := range d.hosts {
+		cmd.Args = append(cmd.Args, "--volfile-server", server)
+	}
+
+	cmd.Args = append(cmd.Args, "--volfile-id", d.volume)
+
+	cmd.Args = append(cmd.Args, "--subdir-mount", subdir)
+
+	cmd.Args = append(cmd.Args, mountpoint)
+
+	log.Printf("Executing %#v", cmd)
+
+	_, err := cmd.CombinedOutput()
+
+	return err
+}
+
+func (d *glfsParams) unmount(mountpoint string) error {
+
+	cmd := exec.Command("umount", mountpoint)
+	_, err := cmd.CombinedOutput()
+
+	return err
+}
+
+///////////////////////////////////////////////////////////////////////////////
 
 // ActiveMount holds active mounts
 type activeMount struct {
@@ -52,17 +244,7 @@ func (d *glusterfsDriver) Create(r *volume.CreateRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	vol, err := d.connect()
-	if err != nil {
-		return err
-	}
-	defer vol.Unmount()
-
-	subdir := d.subdir(r.Name)
-	err = vol.Mkdir(filepath.Join(subdir), defaultMode)
-	if err != nil {
-		log.Printf("gogfapi.Mkdir('%s') Error %v", subdir, err)
-	}
+	err := d.config.create(r.Name)
 
 	return err
 }
@@ -72,24 +254,9 @@ func (d *glusterfsDriver) List() (*volume.ListResponse, error) {
 	d.Lock()
 	defer d.Unlock()
 
-	showHidden := false
+	files, err := d.config.list()
 
-	vol, err := d.connect()
 	if err != nil {
-		return &volume.ListResponse{}, err
-	}
-	defer vol.Unmount()
-
-	dir, err := vol.Open(".")
-	if err != nil {
-		log.Printf("gogfapi.Open('.') Error: %v", err)
-		return &volume.ListResponse{}, err
-	}
-	defer dir.Close()
-
-	files, err := dir.Readdir(0)
-	if err != nil {
-		log.Printf("gogfapi.Readdir(0) Error: %v", err)
 		return &volume.ListResponse{}, err
 	}
 
@@ -122,23 +289,9 @@ func (d *glusterfsDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error)
 		return &volume.GetResponse{Volume: vol}, nil
 	}
 
-	//	If its not found locally, look on the remote gluster volume
-	vol, err := d.connect()
+	stat, err := d.config.get(r.Name)
 	if err != nil {
 		return &volume.GetResponse{}, err
-	}
-	defer vol.Unmount()
-
-	subdir := d.subdir(r.Name)
-
-	stat, err := vol.Stat(subdir)
-	if err != nil {
-		log.Printf("gogfapi.Stat('%s') Error: %v", subdir, err)
-		return &volume.GetResponse{}, err
-	}
-
-	if !stat.IsDir() {
-		return &volume.GetResponse{}, fmt.Errorf("Expected to be a subdir: %s", r.Name)
 	}
 
 	vo := &volume.Volume{
@@ -155,19 +308,14 @@ func (d *glusterfsDriver) Remove(r *volume.RemoveRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	vol, err := d.connect()
-	if err != nil {
-		return err
+	v, ok := d.mounts[r.Name]
+	if ok && v.connections != 0 {
+		log.Printf("Error: %n Existing local mounts", v.connections)
 	}
-	defer vol.Unmount()
 
-	// TODO: recursively delete everything here.
-	subdir := d.subdir(r.Name)
+	err := d.config.remove(r.Name)
 
-	err = vol.Rmdir(subdir)
-	if err != nil {
-		log.Printf("gogfapi.Rmdir('%s') Error: %v", subdir, err)
-	}
+	delete(d.mounts, r.Name)
 
 	return err
 }
@@ -177,7 +325,14 @@ func (d *glusterfsDriver) Path(r *volume.PathRequest) (*volume.PathResponse, err
 	d.Lock()
 	defer d.Unlock()
 
-	return &volume.PathResponse{Mountpoint: d.mountpoint(r.Name)}, nil
+	v, ok := d.mounts[r.Name]
+	if !ok || v.connections == 0 || v.mountpoint == "" {
+		err := fmt.Errorf("no mountpoint for volume.")
+		log.Printf("Path error. name: %s, err: %v", r.Name, err)
+		return &volume.PathResponse{}, err
+	}
+
+	return &volume.PathResponse{Mountpoint: v.mountpoint}, nil
 }
 
 // VolumeDDriver.Mount
@@ -198,34 +353,11 @@ func (d *glusterfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, 
 		d.mounts[r.Name] = v
 	}
 
-	shouldMount := v.connections == 0
-
-	fi, err := os.Lstat(mountpoint)
-	if os.IsNotExist(err) {
-		if err := os.MkdirAll(mountpoint, defaultMode); err != nil {
-			log.Printf("os.MkDirAll(%s) Error: %v", mountpoint, err)
-			return &volume.MountResponse{}, err
-		}
-	} else if err != nil {
-		d.unmount(mountpoint)
-		shouldMount = true
-	}
-
-	if fi != nil && !fi.IsDir() {
-		err = fmt.Errorf("%v already exist and it's not a directory", mountpoint)
-		log.Printf("os.Lstat(%s) Error: %v", mountpoint, err)
+	if err := d.ensureMount(v, mountpoint, r.Name); err != nil {
 		return &volume.MountResponse{}, err
 	}
 
-	if shouldMount {
-
-		d.mount(mountpoint, r.Name)
-
-		if err != nil {
-			return &volume.MountResponse{}, err
-		}
-		v.mountpoint = mountpoint
-	}
+	v.mountpoint = mountpoint
 	v.ids[r.ID]++
 	v.connections++
 
@@ -269,11 +401,8 @@ func (d *glusterfsDriver) Unmount(r *volume.UnmountRequest) error {
 	if len(v.ids) == 0 {
 		log.Printf("Unmounting volume %s with %v clients", r.Name, v.connections)
 
-		cmd := exec.Command("umount", v.mountpoint)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("Exec failed: %v (%s)", err, output)
-		}
+		d.config.unmount(v.mountpoint)
+
 		delete(d.mounts, r.Name)
 	}
 
@@ -284,87 +413,39 @@ func (d *glusterfsDriver) Capabilities() *volume.CapabilitiesResponse {
 	return &volume.CapabilitiesResponse{Capabilities: volume.Capability{Scope: "global"}}
 }
 
-// -------------
-// Utility functions
-
-// connect to a mount. remember to defer vol.Unmount()
-func (d *glusterfsDriver) connect() (*gfapi.Volume, error) {
-
-	vol := &gfapi.Volume{}
-	if err := vol.Init(d.config.volume, d.config.hosts...); err != nil {
-		log.Printf("gogfapi.Init Error: %v", err)
-		return vol, err
-	}
-
-	if err := vol.Mount(); err != nil {
-		log.Printf("gogfapi.Mount Error: %v", err)
-		return vol, err
-	}
-
-	return vol, nil
-}
-
-func (d *glusterfsDriver) mount(mountpoint string, name string) error {
-
-	cmd := exec.Command("glusterfs")
-
-	for _, server := range d.config.hosts {
-		cmd.Args = append(cmd.Args, "--volfile-server", server)
-	}
-
-	cmd.Args = append(cmd.Args, "--volfile-id", d.config.volume)
-
-	cmd.Args = append(cmd.Args, "--subdir-mount", d.subdir(name))
-
-	cmd.Args = append(cmd.Args, mountpoint)
-
-	log.Printf("Executing %#v", cmd)
-
-	_, err := cmd.CombinedOutput()
-
-	return err
-}
-
-func (d *glusterfsDriver) unmount(mountpoint string) error {
-	cmd := exec.Command("umount", mountpoint)
-	_, err := cmd.CombinedOutput()
-	return err
-}
-
-// volume from a glusterfs directory entry
-func (d *glusterfsDriver) volume(stat os.FileInfo) (*volume.Volume, error) {
-	if !stat.IsDir() {
-		return &volume.Volume{}, fmt.Errorf("Object %s is not a directory", stat.Name())
-	}
-
-	return &volume.Volume{
-		Name:      stat.Name(),
-		CreatedAt: stat.ModTime().Format(time.RFC3339),
-		//		Mountpoint: d.mountpoint(stat.Name()),
-	}, nil
-}
-
-func (d *glusterfsDriver) findVolume(name string) (*volume.Volume, bool) {
-
-	v, ok := d.mounts[name]
-	if !ok {
-		return nil, false
-	}
-
-	return &volume.Volume{
-		Name: name,
-		//		CreatedAt:   fmt.Sprintf(createdAt.Format(time.RFC3339)),,
-		Mountpoint: v.mountpoint,
-		//		Status: {}
-	}, true
-}
-
 // mountpoint of a docker volume
 func (d *glusterfsDriver) mountpoint(Name string) string {
 	return filepath.Join(d.root, Name)
 }
 
-// subdir in the gluster volume for the docker volume
-func (d *glusterfsDriver) subdir(Name string) string {
-	return filepath.Join("/", Name)
+func (d *glusterfsDriver) ensureMount(mount *activeMount, mountpoint string, name string) error {
+
+	stat, err := os.Lstat(mountpoint)
+
+	if err == nil && mount.connections > 0 {
+		return nil
+	}
+
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(mountpoint, defaultMode); err != nil {
+			log.Printf("ensureMount error. os.MkdirAll %s, err: %v", mountpoint, err)
+			return err
+		}
+	} else if err != nil {
+		log.Printf("ensureMount is unmounting dodgey fuse mount. os.Lstat %s, err: %v", mountpoint, err)
+		d.config.unmount(mountpoint)
+	}
+
+	if stat != nil && !stat.IsDir() {
+		err = fmt.Errorf("mountpoint is not a directory")
+		log.Printf("ensureMount error: lstat %s, err: %v", mountpoint, err)
+		return err
+	}
+
+	if err = d.config.mount(mountpoint, name); err != nil {
+		log.Printf("ensureMount error: %v", err)
+		return err
+	}
+
+	return nil
 }

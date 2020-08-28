@@ -8,5 +8,5 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20200102110956-c9a8a2d92ccc
 	github.com/gluster/gogfapi v0.0.0-20181212043856-4036f83eff56
-	golang.org/x/net v0.0.0-20200222125558-5a598a2470a0 // indirect
+	golang.org/x/tools v0.0.0-20200827010519-17fd2f27a9e3 // indirect
 )
