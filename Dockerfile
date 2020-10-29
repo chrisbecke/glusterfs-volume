@@ -13,8 +13,16 @@ WORKDIR /app
 COPY . .
 RUN go build
 
+FROM alpine as tini
+# Add Tini
+ENV TINI_VERSION v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+
 FROM base as plugin
 
+COPY --from=tini /tini /tini
 COPY --from=builder /app/docker-volume-glusterfs /docker-volume-glusterfs
 
-ENTRYPOINT ["docker-volume-glusterfs"]
+ENTRYPOINT ["/tini", "--"]
+CMD ["docker-volume-glusterfs"]

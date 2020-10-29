@@ -2,6 +2,8 @@
   "description": "GlusterFS plugin for Docker",
   "documentation": "https://docs.docker.com/engine/extend/plugins/",
   "entrypoint": [
+    "/tini",
+    "--",
     "/docker-volume-glusterfs"
   ],
   "network": {
