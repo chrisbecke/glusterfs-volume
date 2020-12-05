@@ -1,5 +1,5 @@
 {
-  "description": "GlusterFS plugin for Docker",
+  "description": "GlusterFS plugin for Docker v1.2",
   "documentation": "https://docs.docker.com/engine/extend/plugins/",
   "entrypoint": [
     "/tini",
