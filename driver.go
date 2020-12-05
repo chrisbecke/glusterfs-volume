@@ -36,7 +36,7 @@ type glusterfsDriver struct {
 
 	mounts map[string]*activeMount
 
-	config glfsParams
+	client glfsConnector
 }
 
 // API volumeDriver.Create
@@ -44,7 +44,7 @@ func (d *glusterfsDriver) Create(r *volume.CreateRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	err := d.config.create(r.Name)
+	err := d.client.create(r.Name)
 
 	return err
 }
@@ -54,7 +54,7 @@ func (d *glusterfsDriver) List() (*volume.ListResponse, error) {
 	d.Lock()
 	defer d.Unlock()
 
-	files, err := d.config.list()
+	files, err := d.client.list()
 
 	if err != nil {
 		return &volume.ListResponse{}, err
@@ -93,7 +93,7 @@ func (d *glusterfsDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error)
 		return &volume.GetResponse{Volume: vol}, nil
 	}
 
-	stat, err := d.config.get(r.Name)
+	stat, err := d.client.get(r.Name)
 	if err != nil {
 		return &volume.GetResponse{}, err
 	}
@@ -116,7 +116,7 @@ func (d *glusterfsDriver) Remove(r *volume.RemoveRequest) error {
 		log.Printf("Error: %d Existing local mounts", v.connections)
 	}
 
-	err := d.config.remove(r.Name)
+	err := d.client.remove(r.Name)
 
 	delete(d.mounts, r.Name)
 
@@ -156,8 +156,30 @@ func (d *glusterfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, 
 		d.mounts[r.Name] = v
 	}
 
-	if err := d.ensureMount(v, mountpoint, r.Name); err != nil {
-		return &volume.MountResponse{}, err
+	stat, err := os.Lstat(mountpoint)
+
+	if err != nil || v.connections == 0 {
+
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(mountpoint, defaultMode); err != nil {
+				log.Printf("Mount error. os.MkdirAll %s, err: %v", mountpoint, err)
+				return &volume.MountResponse{}, err
+			}
+		} else if err != nil {
+			log.Printf("Mount is unmounting dodgey fuse mount: %v", err)
+			d.client.unmount(mountpoint)
+		}
+
+		if stat != nil && !stat.IsDir() {
+			err = fmt.Errorf("mountpoint is not a directory")
+			log.Printf("Mount error: lstat %s, err: %v", mountpoint, err)
+			return &volume.MountResponse{}, err
+		}
+
+		if err = d.client.mountWithGlusterfs(mountpoint, r.Name); err != nil {
+			log.Printf("Mount error: %v", err)
+			return &volume.MountResponse{}, err
+		}
 	}
 
 	v.mountpoint = mountpoint
@@ -205,7 +227,7 @@ func (d *glusterfsDriver) Unmount(r *volume.UnmountRequest) error {
 	if len(v.ids) == 0 {
 		log.Printf("Unmounting volume %s with %v clients", r.Name, v.connections)
 
-		d.config.unmount(v.mountpoint)
+		d.client.unmount(v.mountpoint)
 
 		delete(d.mounts, r.Name)
 	}
@@ -220,36 +242,4 @@ func (d *glusterfsDriver) Capabilities() *volume.CapabilitiesResponse {
 // mountpoint of a docker volume
 func (d *glusterfsDriver) mountpoint(Name string) string {
 	return filepath.Join(d.root, Name)
-}
-
-func (d *glusterfsDriver) ensureMount(mount *activeMount, mountpoint string, name string) error {
-
-	stat, err := os.Lstat(mountpoint)
-
-	if err == nil && mount.connections > 0 {
-		return nil
-	}
-
-	if os.IsNotExist(err) {
-		if err := os.MkdirAll(mountpoint, defaultMode); err != nil {
-			log.Printf("ensureMount error. os.MkdirAll %s, err: %v", mountpoint, err)
-			return err
-		}
-	} else if err != nil {
-		log.Printf("ensureMount is unmounting dodgey fuse mount: %v", err)
-		d.config.unmount(mountpoint)
-	}
-
-	if stat != nil && !stat.IsDir() {
-		err = fmt.Errorf("mountpoint is not a directory")
-		log.Printf("ensureMount error: lstat %s, err: %v", mountpoint, err)
-		return err
-	}
-
-	if err = d.config.mountWithGlusterfs(mountpoint, name); err != nil {
-		log.Printf("ensureMount error: %v", err)
-		return err
-	}
-
-	return nil
 }

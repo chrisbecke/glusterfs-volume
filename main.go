@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/docker/go-plugins-helpers/volume"
+	"github.com/gluster/gogfapi/gfapi"
 )
 
 //------------------------------
@@ -37,10 +38,23 @@ func main() {
 	gfsvol := os.Getenv("GFS_VOLUME")
 	gfsservers := strings.Split(os.Getenv("GFS_SERVERS"), ",")
 
+	vol := &gfapi.Volume{}
+	if err := vol.Init(gfsvol, gfsservers...); err != nil {
+		log.Printf("gogfapi Error. Init volume: '%s', servers: %v. err: %v", gfsvol, gfsservers, err)
+		return
+	}
+
+	if err := vol.Mount(); err != nil {
+		log.Printf("gogfapi Error. Mount volume: '%s', servers: %v. err: %v", gfsvol, gfsservers, err)
+		return
+	}
+	defer vol.Unmount()
+
 	d := &glusterfsDriver{
 		mounts: map[string]*activeMount{},
 		root:   propagatedMount,
-		config: glfsParams{
+		client: glfsConnector{
+			conn:   vol,
 			volume: gfsvol,
 			hosts:  gfsservers,
 		},
