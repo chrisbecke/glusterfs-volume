@@ -1,15 +1,31 @@
-version: "3.7"
+version: '3.8'
+
+volumes:
+  lvm:
+  save:
+  data:
 
 services:
 
   builder:
     image: glusterbuild
     build:
-      context: builder
+      context: .
+      target: builder
     working_dir: /src
     volumes:
       - ./:/src
       - ./test:/usr/local/go/src/test
 
-#  test-volume:
-#    driver: docker-volume-glusterfs:latest
+  glusterfs:
+    image: gluster/gluster-centos
+    hostname: glusterfs
+    privileged: true
+    network_mode: host
+    environment:
+      CGROUP_PIDS_MAX: 0
+    volumes:
+      - lvm:/run/lvm
+      - save:/var/lib/glusterd
+      - data:/data
+    
