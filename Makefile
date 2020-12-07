@@ -1,6 +1,7 @@
 registry = 
 plugin = $(registry)$(notdir $(CURDIR))
 context = default
+node = node
 go_source := main.go driver.go gfs.go
 volume := test
 # gv0
@@ -77,9 +78,13 @@ commit:
 	git push
 
 deploy:
-	@-docker -c $(context) plugin disable $(alias)
-	@-docker -c $(context) plugin rm $(alias)
-	@-docker -c $(context) plugin install --alias $(alias) --grant-all-permissions $(plugin) GFS_SERVERS=$(servers) GFS_VOLUME=$(volume)
+	#@docker -c $(context) node update --availability drain $(node)
+	#@echo Proceeding with...
+	@docker -c $(node) ps
+	@-docker -c $(node) plugin disable $(alias) --force
+	@-docker -c $(node) plugin rm $(alias) --force
+	@-docker -c $(node) plugin install --alias $(alias) --grant-all-permissions $(plugin) GFS_SERVERS=$(servers) GFS_VOLUME=$(volume)
+	#@docker -c $(context) node update --availability active $(node)
 
 shell:
 	docker-compose -c $(context) run builder
@@ -93,3 +98,6 @@ test-gluster-up:
 
 dockerlog:
 	tail -f ~/Library/Containers/com.docker.docker/Data/log/vm/dockerd.log
+
+count:
+	docker ps -q | wc -l
