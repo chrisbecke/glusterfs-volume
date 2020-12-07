@@ -6,19 +6,19 @@ This plugin does not expose glusterfs volumes to docker, instead plugin instance
 
 ## Quick Start
 
-To build the plugin just run `make` and then `docker plugin ls` to verify the plugin is available.
+To build the plugin just run `make build` and then `docker plugin ls` to verify the plugin is available.
 
 Once the plugin is created this way, it can be connected to glusterfs storage :
 
 ```bash
-docker plugin set GFS_VOLUME=gv0 GFS_SERVERS=server1,server2,server3
-docker plugin enable
+docker plugin set glusterfs-volume GFS_VOLUME=gv0 GFS_SERVERS=server1,server2,server3
+docker plugin enable glusterfs-volume
 ```
 
-A better way is to create an instance of the plugin for each unique gluster volume it must manage:
+A better way is to create an instance of the plugin for each unique gluster volume it must manage. For this to work the plugin must be published in a registry.
 
 ```bash
-docker plugin install --alias cloud1 gluster-volume GFS_VOLUME=cloud1 GFS_SERVERS=server1,server2,server3
+docker plugin install --alias cloud1 registry.example.com/glusterfs-volume GFS_VOLUME=cloud1 GFS_SERVERS=server1,server2,server3
 ```
 
 This plugin expects the root gluster volume to be pre-created.
@@ -29,10 +29,8 @@ docker-compose builder operations are passed an explicit --context default flag 
 docker agent as the build target to deploy directly to a swarm server (as an example)
 
 ```bash
-make build plugin=registry.unreal.mgsops.net/gluster-volume
+make build push plugin=registry.example.com/gluster-volume
 ```
-
-
 
 ## References
 * [GoDoc: package gfapi](https://godoc.org/github.com/gluster/gogfapi/gfapi)
@@ -75,4 +73,3 @@ There is no particular way to instruct docekr to actually delete unwanted remote
 scope global plugins can be added and removed at will. docker does not track volumes on each node.
 this is presumably up to the driver itself, and docker will also NOT prevent a docker volume rm reaching the driver for a volume
 being used on another node.
-
