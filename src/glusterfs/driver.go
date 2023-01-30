@@ -1,10 +1,11 @@
-package main
+package glusterfs
 
 import (
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 const defaultMode = 0755
 const mountMode = 0555
 const showHidden = false
+const propagatedMount = "/mnt/volumes"
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -25,7 +27,6 @@ const showHidden = false
 type activeMount struct {
 	connections int
 	mountpoint  string
-	createdAt   time.Time
 	ids         map[string]int
 }
 
@@ -36,7 +37,7 @@ type glusterfsDriver struct {
 
 	mounts map[string]*activeMount
 
-	client glfsConnector
+	client *glfsConnector
 }
 
 // API volumeDriver.Create
@@ -77,32 +78,28 @@ func (d *glusterfsDriver) Get(r *volume.GetRequest) (*volume.GetResponse, error)
 	defer d.Unlock()
 
 	s := make(map[string]interface{})
-	s["gluster-volume-version"] = "3"
-
-	// Find it if its listed in mounts.
-	v, ok := d.mounts[r.Name]
-	if ok {
-		s["source"] = "mounts"
-		vol := &volume.Volume{
-			Name:       r.Name,
-			CreatedAt:  v.createdAt.Format(time.RFC3339),
-			Mountpoint: v.mountpoint,
-			Status:     s,
-		}
-
-		return &volume.GetResponse{Volume: vol}, nil
-	}
 
 	stat, err := d.client.get(r.Name)
 	if err != nil {
 		return &volume.GetResponse{}, err
 	}
-	s["source"] = "gogfs-statd"
 	vo := &volume.Volume{
 		Name:      stat.Name(),
 		CreatedAt: stat.ModTime().Format(time.RFC3339),
 		Status:    s,
 	}
+
+	// Find it if its listed in mounts.
+	v, ok := d.mounts[r.Name]
+	if ok {
+		s["local-mounts"] = strconv.Itoa(v.connections)
+		vo.Mountpoint = v.mountpoint
+
+		for id, count := range v.ids {
+			s[id] = strconv.Itoa(count)
+		}
+	}
+
 	return &volume.GetResponse{Volume: vo}, nil
 }
 
@@ -143,7 +140,7 @@ func (d *glusterfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, 
 	d.Lock()
 	defer d.Unlock()
 
-	log.Printf("GlusterFS: Mount %+v", r)
+	//	log.Printf("GlusterFS: Mount %+v", r)
 
 	mountpoint := d.mountpoint(r.Name)
 
@@ -186,14 +183,14 @@ func (d *glusterfsDriver) Mount(r *volume.MountRequest) (*volume.MountResponse, 
 	v.ids[r.ID]++
 	v.connections++
 
-	log.Printf("Mounted registration: %+v", v)
+	//	log.Printf("Mounted registration: %+v", v)
 
 	return &volume.MountResponse{Mountpoint: mountpoint}, nil
 }
 
 // VolumeDriver.Unmount
 func (d *glusterfsDriver) Unmount(r *volume.UnmountRequest) error {
-	log.Printf("GlusterFS: Unmount %v", r)
+	//	log.Printf("GlusterFS: Unmount %v", r)
 
 	v, ok := d.mounts[r.Name]
 	if !ok {
@@ -225,7 +222,7 @@ func (d *glusterfsDriver) Unmount(r *volume.UnmountRequest) error {
 	}
 
 	if len(v.ids) == 0 {
-		log.Printf("Unmounting volume %s with %v clients", r.Name, v.connections)
+		//		log.Printf("Unmounting volume %s with %v clients", r.Name, v.connections)
 
 		d.client.unmount(v.mountpoint)
 
@@ -242,4 +239,14 @@ func (d *glusterfsDriver) Capabilities() *volume.CapabilitiesResponse {
 // mountpoint of a docker volume
 func (d *glusterfsDriver) mountpoint(Name string) string {
 	return filepath.Join(d.root, Name)
+}
+
+func NewDriver(client *glfsConnector) *glusterfsDriver {
+	d := &glusterfsDriver{
+		mounts: map[string]*activeMount{},
+		root:   propagatedMount,
+		client: client,
+	}
+
+	return d
 }

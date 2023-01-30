@@ -1,3 +1,4 @@
 plugin/
 bin/
 gluster_id.txt
+**/glusterfs-plugin

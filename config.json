@@ -1,10 +1,10 @@
 {
-  "description": "GlusterFS plugin for Docker v1.2",
+  "description": "GlusterFS Docker Volume Plugin",
   "documentation": "https://docs.docker.com/engine/extend/plugins/",
   "entrypoint": [
-    "/tini",
+    "tini",
     "--",
-    "/docker-volume-glusterfs"
+    "glusterfs-plugin"
   ],
   "network": {
     "type": "host"
@@ -39,14 +39,6 @@
     {
       "name": "GFS_SERVERS",
       "description": "comma seperated list of volfile-server",
-      "settable": [
-        "value"
-      ],
-      "value": ""
-    },
-    {
-      "name": "LOGFILE",
-      "description": "optional location of logfile",
       "settable": [
         "value"
       ],

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/docker/go-plugins-helpers/volume"
-	"github.com/gluster/gogfapi/gfapi"
+	"volume-plugin/gfapi"
 )
 
 //------------------------------

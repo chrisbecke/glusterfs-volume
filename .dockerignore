@@ -1,1 +1,6 @@
 plugin/
+bin/
+gluster-cluster/
+minio/
+.gitignore
+docker-compose.yml

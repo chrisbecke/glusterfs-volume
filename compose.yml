@@ -1,5 +1,3 @@
-version: '3.8'
-
 volumes:
   lvm:
   save:
@@ -14,8 +12,7 @@ services:
       target: builder
     working_dir: /src
     volumes:
-      - ./:/src
-      - ./test:/usr/local/go/src/test
+    - ./src/:/src
 
   glusterfs:
     image: gluster/gluster-centos

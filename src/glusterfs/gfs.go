@@ -1,4 +1,4 @@
-package main
+package glusterfs
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/gluster/gogfapi/gfapi"
+	gfapi "glusterfs-plugin/gfapi"
 )
 
 // -------------------------------------------
@@ -148,7 +148,7 @@ func (d *glfsConnector) mountWithGlusterfs(mountpoint string, name string) error
 	cmd.Args = append(cmd.Args, "--subdir-mount", filepath.Join("/", name))
 	cmd.Args = append(cmd.Args, mountpoint)
 
-	log.Printf("Executing %v", cmd)
+	fmt.Printf("Executing %v", cmd)
 
 	_, err := cmd.CombinedOutput()
 
@@ -176,4 +176,27 @@ func (d *glfsConnector) unmount(mountpoint string) error {
 	_, err := cmd.CombinedOutput()
 
 	return err
+}
+
+func NewGlusterClient(gfsvol string, gfsservers ...string) (*glfsConnector, error) {
+
+	vol := &gfapi.Volume{}
+	//	fmt.Print("calling vol.Init\n")
+	if err := vol.Init(gfsvol, gfsservers...); err != nil {
+		return nil, err
+	}
+
+	//	fmt.Print("calling vol.Mount\n")
+	if err := vol.Mount(); err != nil {
+		return nil, err
+	}
+
+	//	defer vol.Unmount()
+
+	c := &glfsConnector{
+		conn:   vol,
+		volume: gfsvol,
+		hosts:  gfsservers,
+	}
+	return c, nil
 }

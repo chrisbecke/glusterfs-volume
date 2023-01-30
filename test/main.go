@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/gluster/gogfapi/gfapi"
+	"volume-plugin/gfapi"
 )
 
 func main() {

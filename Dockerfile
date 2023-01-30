@@ -1,31 +1,31 @@
-FROM gluster/glusterfs-client as base
+FROM ubuntu:22.04 AS ubuntu-base
 
-RUN yum -y update
-RUN yum install -y glusterfs-api 
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update 
+RUN apt-get install -y glusterfs-client ca-certificates tini
 
-FROM base AS builder
+FROM ubuntu-base AS ubuntu-builder
 
-RUN yum install -y glusterfs-api-devel gcc
-RUN curl -k https://dl.google.com/go/go1.14.1.linux-amd64.tar.gz | tar xz -C /usr/local
+RUN apt-get install -y golang-go pkg-config libglusterfs-dev uuid-dev ca-certificates
 
-ENV PATH=/usr/local/go/bin:$PATH
+FROM fedora:38 AS fedora-base
+
+RUN dnf update -y
+RUN dnf install -y glusterfs-client tini
+
+FROM fedora-base AS fedora-builder
+
+RUN dnf install -y pkg-config glusterfs-api-devel golang
+
+FROM ubuntu-builder AS builder
+FROM ubuntu-base AS base
 
 FROM builder AS build
 
 WORKDIR /src
-COPY . .
+COPY src .
 RUN go build
 
-WORKDIR /tini
-# Add Tini
-ENV TINI_VERSION v0.19.0
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini/tini
-RUN chmod +x /tini/tini
+FROM base AS plugin
 
-FROM base as plugin
-
-COPY --from=build /tini/tini /usr/local/bin/tini
-COPY --from=build /app/docker-volume-glusterfs /usr/local/bin/docker-volume-glusterfs
-
-ENTRYPOINT ["tini", "--"]
-CMD ["docker-volume-glusterfs"]
+COPY --from=build /src/glusterfs-plugin /usr/local/bin/glusterfs-plugin
